@@ -1,19 +1,21 @@
 package com.project.judge.service;
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.WaitContainerResultCallback;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
-import com.github.dockerjava.core.command.LogContainerResultCallback;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
 import com.project.judge.dto.response.CodeExecutionResponse;
+import com.project.judge.exception.JudgeException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -23,18 +25,21 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class JudgeService {
 
+    private static final long MEMORY_LIMIT = 512 * 1024 * 1024L; // 512MB
+    private static final long TIMEOUT_SECONDS = 5L;
+    private static final int MAX_OUTPUT_SIZE = 50000; // 50KB
+    private static final int MAX_ERROR_SIZE = 10000;  // 10KB
+
     private final DockerClient dockerClient;
 
     public JudgeService() {
         log.info("---> Initializing Docker client...");
 
         try {
-            // Create config
             DefaultDockerClientConfig config = DefaultDockerClientConfig
                     .createDefaultConfigBuilder()
                     .build();
 
-            // Create HTTP client
             DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
                     .dockerHost(config.getDockerHost())
                     .sslConfig(config.getSSLConfig())
@@ -43,18 +48,14 @@ public class JudgeService {
                     .responseTimeout(Duration.ofSeconds(45))
                     .build();
 
-            // Create Docker client
             this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
-
-            // Test connection
             dockerClient.pingCmd().exec();
             log.info("---> Docker connection successful!");
 
-            // Pull Python image if not exists
             pullPythonImage();
 
         } catch (Exception e) {
-            log.error("---> Failed to connect to Docker: {}" , e.getMessage());
+            log.error("---> Failed to connect to Docker: {}", e.getMessage());
             throw new RuntimeException("Cannot connect to Docker", e);
         }
     }
@@ -63,7 +64,6 @@ public class JudgeService {
         try {
             log.info("---> Checking Python image...");
 
-            // Check if image exists
             boolean imageExists = dockerClient.listImagesCmd()
                     .withImageNameFilter("python:3.11-alpine")
                     .exec()
@@ -72,12 +72,11 @@ public class JudgeService {
                     .isPresent();
 
             if (!imageExists) {
-                log.info("---> Pulling python:3.11-alpine (this may take a minute)...");
+                log.info("---> Pulling python:3.11-alpine...");
                 dockerClient.pullImageCmd("python:3.11-alpine")
                         .start()
                         .awaitCompletion();
                 log.info("---> Python image ready!");
-
             } else {
                 log.info("---> Python image already available!");
             }
@@ -87,57 +86,67 @@ public class JudgeService {
     }
 
     public CodeExecutionResponse executeCode(String code) {
+        return executeCode(code, null);
+    }
+
+    public CodeExecutionResponse executeCode(String code, String input) {
         log.info("---> Executing Python code...");
 
+        Path tempDir = null;
+        Path codeFile = null;
+        String containerId = null;
+
         try {
-            // 1. Create temp directory and code file
-            Path tempDir = Files.createTempDirectory("judge_");
-            Path codeFile = tempDir.resolve("solution.py");
-            Files.writeString(codeFile, code);
+            // 1. Prepare code file
+            code = code.strip(); // Remove leading/trailing whitespace
+            tempDir = Files.createTempDirectory("judge_");
+            codeFile = tempDir.resolve("solution.py");
+            Files.writeString(codeFile, code, StandardCharsets.UTF_8);
 
             log.info("---> Temp file: {}", codeFile);
 
-            // 2. Create Docker container
+            // 2. Create container
             CreateContainerResponse container = dockerClient
                     .createContainerCmd("python:3.11-alpine")
-                    .withCmd("python", "/app/solution.py")
+                    .withCmd("python", "-u", "/app/solution.py") // -u for unbuffered output
                     .withHostConfig(new HostConfig()
-                            .withMemory(256 * 1024 * 1024L)    // 256MB RAM
-                            .withCpuQuota(50000L)              // 50% CPU (2 containers per core)
-                            .withNetworkMode("none")              // No internet
+                            .withMemory(MEMORY_LIMIT)
+                            .withMemorySwap(MEMORY_LIMIT) // Prevent swap usage
+                            .withCpuQuota(50000L)
+                            .withCpuPeriod(100000L)
+                            .withPidsLimit(50L) // Limit processes
+                            .withNetworkMode("none")
                             .withBinds(new Bind(
                                     tempDir.toString(),
                                     new Volume("/app"),
                                     AccessMode.ro
                             ))
-                            .withAutoRemove(true))               // Auto cleanup
+                            .withAutoRemove(true))
                     .exec();
 
-            String containerId = container.getId();
+            containerId = container.getId();
             log.info("---> Container created: {}", containerId.substring(0, 12));
 
             // 3. Start container
             dockerClient.startContainerCmd(containerId).exec();
             log.info("---> Container started");
 
-            // 4. Wait for completion (5 second timeout)
+            // 4. Wait for completion with timeout
             WaitContainerResultCallback callback = new WaitContainerResultCallback();
             dockerClient.waitContainerCmd(containerId).exec(callback);
 
             Integer exitCode;
-
             try {
-                exitCode = callback.awaitStatusCode(5, TimeUnit.SECONDS);
+                exitCode = callback.awaitStatusCode(TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 log.info("---> Execution completed with exit code: {}", exitCode);
-
             } catch (Exception e) {
-                dockerClient.killContainerCmd(containerId).exec();
-                log.error("---> Timeout - container killed");
-
-                Files.deleteIfExists(codeFile);
-                Files.deleteIfExists(tempDir);
-
-                return new CodeExecutionResponse(false, "TIME_LIMIT_EXCEEDED", "");
+                log.error("---> Timeout - killing container");
+                try {
+                    dockerClient.killContainerCmd(containerId).exec();
+                } catch (Exception killEx) {
+                    log.warn("Failed to kill container: {}", killEx.getMessage());
+                }
+                return new CodeExecutionResponse(false, "Time Limit Exceeded", "");
             }
 
             // 5. Get output
@@ -147,51 +156,76 @@ public class JudgeService {
             dockerClient.logContainerCmd(containerId)
                     .withStdOut(true)
                     .withStdErr(true)
-                    .exec(new LogContainerResultCallback() {
+                    .exec(new ResultCallback.Adapter<>() {
                         @Override
                         public void onNext(Frame frame) {
                             byte[] payload = frame.getPayload();
-                            if (frame.getStreamType() == StreamType.STDOUT) {
-                                try {
+                            try {
+                                if (frame.getStreamType() == StreamType.STDOUT) {
                                     outputStream.write(payload);
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                            } else if (frame.getStreamType() == StreamType.STDERR) {
-                                try {
+                                } else if (frame.getStreamType() == StreamType.STDERR) {
                                     errorStream.write(payload);
-                                } catch (Exception e) {
-                                    e.printStackTrace();
                                 }
+                            } catch (Exception e) {
+                                log.error("Error reading frame: {}", e.getMessage());
                             }
                         }
                     })
                     .awaitCompletion();
 
-            String output = outputStream.toString().trim();
-            String error = errorStream.toString().trim();
+            String output = truncateOutput(outputStream.toString(StandardCharsets.UTF_8), MAX_OUTPUT_SIZE);
+            String error = truncateOutput(errorStream.toString(StandardCharsets.UTF_8), MAX_ERROR_SIZE);
 
-            log.info("---> Output: {}", output);
-
+            log.info("---> Output length: {} bytes", output.length());
             if (!error.isEmpty()) {
                 log.error("---> Error: {}", error);
             }
 
-            // 6. Cleanup temp files
-            Files.deleteIfExists(codeFile);
-            Files.deleteIfExists(tempDir);
-
-            // 7. Return result
+            // 6. Determine result
             if (exitCode != 0) {
-                return new CodeExecutionResponse(false, error, output);
+                String errorMessage = !error.isEmpty() ? error : output;
+                return new CodeExecutionResponse(false, errorMessage, "");
             }
 
             return new CodeExecutionResponse(true, output, "");
 
         } catch (Exception e) {
-            log.error("---> Execution error: {}", e.getMessage());
-            return new CodeExecutionResponse(false, "RUNTIME_ERROR: " + e.getMessage(), "");
+            log.error("---> Execution error: {}", e.getMessage(), e);
+
+            // Try to clean up container if it exists
+            if (containerId != null) {
+                try {
+                    dockerClient.killContainerCmd(containerId).exec();
+                } catch (Exception killEx) {
+                    // Ignore clean up errors
+                }
+            }
+
+            throw new JudgeException("JUDGE_SERVICE_ERROR", "Unexpected internal service error occurred");
+
+        } finally {
+            // Always cleanup temp files
+            cleanupTempFiles(codeFile, tempDir);
         }
     }
 
+    private String truncateOutput(String output, int maxSize) {
+        if (output.length() > maxSize) {
+            return output.substring(0, maxSize) + "\n... (output truncated)";
+        }
+        return output;
+    }
+
+    private void cleanupTempFiles(Path codeFile, Path tempDir) {
+        try {
+            if (codeFile != null) {
+                Files.deleteIfExists(codeFile);
+            }
+            if (tempDir != null) {
+                Files.deleteIfExists(tempDir);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to cleanup temp files: {}", e.getMessage());
+        }
+    }
 }
