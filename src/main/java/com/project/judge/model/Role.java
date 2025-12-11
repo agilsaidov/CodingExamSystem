@@ -1,6 +1,7 @@
 package com.project.judge.model;
 
-public enum UserType {
-    TEACHER,
-    STUDENT
+public enum Role {
+    INSTRUCTOR,
+    STUDENT,
+    ADMIN
 }
