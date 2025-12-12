@@ -22,7 +22,7 @@ public class AppUser {
     private String userId;
 
     @Column(name = "username", unique = true, length = 50)
-    private String userName;
+    private String username;
 
     @Column(name = "password", nullable = false, length = 255)
     private String password;
