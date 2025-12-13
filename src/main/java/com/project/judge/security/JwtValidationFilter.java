@@ -92,6 +92,14 @@ public class JwtValidationFilter extends OncePerRequestFilter {
 
     }
 
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+
+        return path.startsWith("/api/v1/login") ||
+                path.startsWith("/api/v1/test/");
+    }
+
 
     public void sendExceptionResponse(HttpServletResponse response,
                                       HttpStatus status,

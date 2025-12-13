@@ -1,4 +1,4 @@
-package com.project.judge.utils;
+package com.project.judge.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
