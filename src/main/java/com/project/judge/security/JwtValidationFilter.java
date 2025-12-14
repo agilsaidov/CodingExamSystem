@@ -97,7 +97,7 @@ public class JwtValidationFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
 
         return path.startsWith("/api/v1/login") ||
-                path.startsWith("/api/v1/test/");
+                path.startsWith("/api/v1/judge/");
     }
 
 
