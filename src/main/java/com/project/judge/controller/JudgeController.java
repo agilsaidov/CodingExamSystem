@@ -1,5 +1,7 @@
 package com.project.judge.controller;
 
+import com.project.judge.dto.request.JudgeSubmissionRequest;
+import com.project.judge.dto.response.JudgeSubmissionResponse;
 import com.project.judge.service.JudgeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +29,16 @@ public class JudgeController {
         if (available) {
             response.put("info", judgeService.getAbout());
         }
+
+        return ResponseEntity.ok(response);
+    }
+
+
+    @PostMapping("/submit")
+    public ResponseEntity<JudgeSubmissionResponse> submit(
+            @RequestBody JudgeSubmissionRequest request) {
+
+        JudgeSubmissionResponse response = judgeService.submitAndWait(request);
 
         return ResponseEntity.ok(response);
     }

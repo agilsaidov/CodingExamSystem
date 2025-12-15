@@ -15,7 +15,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ExceptionResponse> handleJudgeException(JudgeException e) {
         ExceptionResponse exceptionResponse = new ExceptionResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                e.getErrorName(),
+                "JUDGE_SERVICE_EXCEPTION",
                 e.getMessage(),
                 LocalDateTime.now()
         );
