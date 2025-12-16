@@ -4,6 +4,8 @@ import com.project.judge.config.Judge0Properties;
 import com.project.judge.dto.request.JudgeSubmissionRequest;
 import com.project.judge.dto.response.JudgeSubmissionResponse;
 import com.project.judge.exception.JudgeException;
+import com.project.judge.model.TestCase;
+import com.project.judge.utils.JudgeStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -14,6 +16,9 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -93,6 +98,82 @@ public class JudgeService {
             log.error("Failed to submit to Judge0", e);
             throw new JudgeException("Failed to submit to Judge0: ");
         }
+    }
+
+
+    @Retryable(
+            value = {ResourceAccessException.class, HttpServerErrorException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
+    )
+    public JudgeSubmissionResponse getSubmission(String token){
+        try{
+            String url = properties.getUrl() + "/submission/" + token + "?base64_encoded=false";
+
+            HttpHeaders headers = createHeaders();
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<JudgeSubmissionResponse> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    JudgeSubmissionResponse.class
+            );
+
+            return response.getBody();
+
+        }catch(Exception e){
+            log.error("Failed to get submission: token={}", token, e);
+            throw new JudgeException("Failed to get submission");
+        }
+    }
+
+
+    public List<JudgeSubmissionResponse> submitWithTestCases(
+            String sourceCode,
+            Integer languageId,
+            List<TestCase> testCases,
+            Integer timeLimit,
+            Integer memoryLimit){
+
+        log.info("Running code against {} test cases", testCases.size());
+
+        List<JudgeSubmissionResponse> result = new ArrayList<>();
+
+        for(int i =0; i< testCases.size();i++){
+            TestCase testCase = testCases.get(i);
+
+            log.info("Running test case {}/{}", i+1, testCases.size());
+
+            JudgeSubmissionRequest request = JudgeSubmissionRequest.builder()
+                    .sourceCode(sourceCode)
+                    .languageId(languageId)
+                    .stdin(testCase.getInput())
+                    .expectedOutput(testCase.getExpectedOutput())
+                    .cpuTimeLimit(timeLimit !=null ? timeLimit.doubleValue() : properties.getDefaultCpuTimeLimit())
+                    .memoryLimit(memoryLimit != null ? memoryLimit : properties.getDefaultMemoryLimit())
+                    .wallTimeLimit(properties.getDefaultWallTimeLimit())
+                    .build();
+
+            JudgeSubmissionResponse response = submitAndWait(request);
+            result.add(response);
+
+            if(response.getStatus() != null){
+                boolean passed = JudgeStatus.isAccepted(response.getStatus().getId());
+                log.info("Test case {}/{} : {} ({})",
+                        i+1, testCases.size(),
+                        passed ? "PASSED" : "FAILED",
+                        response.getStatus().getDescription());
+            }
+        }
+
+        long passedCount = result.stream()
+                .filter(r -> r.getStatus() != null && JudgeStatus.isAccepted(r.getStatus().getId()))
+                .count();
+
+        log.info("Completed: {}/{} test cases passed", passedCount, testCases.size());
+
+        return result;
     }
 
 
