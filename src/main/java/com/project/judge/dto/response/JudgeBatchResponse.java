@@ -1,0 +1,14 @@
+package com.project.judge.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class JudgeBatchResponse {
+    private List<JudgeSubmissionResponse> submissions;
+}

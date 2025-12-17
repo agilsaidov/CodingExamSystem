@@ -1,7 +1,9 @@
 package com.project.judge.service;
 
 import com.project.judge.config.Judge0Properties;
+import com.project.judge.dto.request.JudgeBatchRequest;
 import com.project.judge.dto.request.JudgeSubmissionRequest;
+import com.project.judge.dto.response.JudgeBatchResponse;
 import com.project.judge.dto.response.JudgeSubmissionResponse;
 import com.project.judge.exception.JudgeException;
 import com.project.judge.model.TestCase;
@@ -19,6 +21,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -47,12 +50,12 @@ public class JudgeService {
             return response.getBody();
         } catch (Exception e) {
             log.error("Failed to get Judge0 info", e);
-            throw new JudgeException("Failed to get Judge0 info: ");
+            throw new JudgeException("Failed to get Judge0 info: " + e.getMessage());
         }
     }
 
     @Retryable(
-            value = {ResourceAccessException.class, HttpServerErrorException.class},
+            retryFor = {ResourceAccessException.class, HttpServerErrorException.class},
             maxAttempts = 3,
             backoff = @Backoff(delay = 1000)
     )
@@ -89,20 +92,20 @@ public class JudgeService {
         } catch (HttpClientErrorException e) {
             log.error("Judge0 client error: status={}, body={}",
                     e.getStatusCode(), e.getResponseBodyAsString());
-            throw new JudgeException("Judge0 client error: ");
+            throw new JudgeException("Judge0 client error: " + e.getMessage());
         } catch (HttpServerErrorException e) {
             log.error("Judge0 server error: status={}, body={}",
                     e.getStatusCode(), e.getResponseBodyAsString());
-            throw new JudgeException("Judge0 server error: ");
+            throw new JudgeException("Judge0 server error: " + e.getMessage());
         } catch (Exception e) {
             log.error("Failed to submit to Judge0", e);
-            throw new JudgeException("Failed to submit to Judge0: ");
+            throw new JudgeException("Failed to submit to Judge0: " + e.getMessage());
         }
     }
 
 
     @Retryable(
-            value = {ResourceAccessException.class, HttpServerErrorException.class},
+            retryFor = {ResourceAccessException.class, HttpServerErrorException.class},
             maxAttempts = 3,
             backoff = @Backoff(delay = 1000)
     )
@@ -174,6 +177,97 @@ public class JudgeService {
         log.info("Completed: {}/{} test cases passed", passedCount, testCases.size());
 
         return result;
+    }
+
+    /**
+    *Method for submitting multiple requests
+    */
+    public List<JudgeSubmissionResponse> submitBatch(List<JudgeSubmissionRequest> requests) {
+        try {
+            String url = properties.getUrl() + "/submissions/batch?base64_encoded=false";
+
+            JudgeBatchRequest batchRequest = new JudgeBatchRequest();
+            batchRequest.setSubmissions(requests);
+
+            log.info("Submitting batch of {} submissions", requests.size());
+
+            HttpHeaders headers = createHeaders();
+            HttpEntity<JudgeBatchRequest> entity = new HttpEntity<>(batchRequest, headers);
+
+            ResponseEntity<JudgeBatchResponse> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    JudgeBatchResponse.class
+            );
+
+            JudgeBatchResponse batchResponse = response.getBody();
+
+            if (batchResponse != null && batchResponse.getSubmissions() != null) {
+                List<String> tokens = batchResponse.getSubmissions().stream()
+                        .map(JudgeSubmissionResponse::getToken)
+                        .collect(Collectors.toList());
+
+                log.info("Batch created with {} tokens", tokens.size());
+
+                // Wait and fetch results
+                return tokens.stream()
+                        .map(this::waitAndGetSubmission)
+                        .collect(Collectors.toList());
+            }
+
+            return new ArrayList<>();
+
+        } catch (Exception e) {
+            log.error("Failed to submit batch", e);
+            throw new JudgeException("Failed to submit batch: " + e.getMessage());
+        }
+    }
+
+
+    public JudgeSubmissionRequest createRequest(
+            String sourceCode,
+            Integer languageId,
+            String stdin,
+            String expectedOutput) {
+
+        return JudgeSubmissionRequest.builder()
+                .sourceCode(sourceCode)
+                .languageId(languageId)
+                .stdin(stdin != null ? stdin : "")
+                .expectedOutput(expectedOutput)
+                .cpuTimeLimit(properties.getDefaultCpuTimeLimit())
+                .memoryLimit(properties.getDefaultMemoryLimit())
+                .wallTimeLimit(properties.getDefaultWallTimeLimit())
+                .build();
+    }
+
+    /**
+     * Wait for submission result (with polling)
+     */
+    private JudgeSubmissionResponse waitAndGetSubmission(String token) {
+        int maxAttempts = 20;
+        int attempt = 0;
+        int delayMs = 500;
+
+        while (attempt < maxAttempts) {
+            JudgeSubmissionResponse response = getSubmission(token);
+
+            if (response.getStatus() != null && !JudgeStatus.isProcessing(response.getStatus().getId())) {
+                return response;
+            }
+
+            try {
+                Thread.sleep(delayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new JudgeException("Interrupted while waiting for result");
+            }
+
+            attempt++;
+        }
+
+        throw new JudgeException("Timeout waiting for submission result: " + token);
     }
 
 
