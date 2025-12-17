@@ -7,7 +7,7 @@ import com.project.judge.dto.response.JudgeBatchResponse;
 import com.project.judge.dto.response.JudgeSubmissionResponse;
 import com.project.judge.exception.JudgeException;
 import com.project.judge.model.TestCase;
-import com.project.judge.utils.JudgeStatus;
+import com.project.judge.constant.JudgeStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -61,9 +61,9 @@ public class JudgeService {
     )
     public JudgeSubmissionResponse submitAndWait(JudgeSubmissionRequest request){
         try{
-            String url = properties.getUrl() + "/submission?base64_encoded=false&wait=true";
+            String url = properties.getUrl() + "/submissions?base64_encoded=false&wait=true";
 
-            log.info("Submitting to Judge: languageId={}, codeLength{}",
+            log.info("Submitting to Judge: languageId={}, codeLength={}",
                     request.getLanguageId(),
                     request.getSourceCode() != null ? request.getSourceCode().length() : 0);
 
@@ -277,7 +277,7 @@ public class JudgeService {
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         if (properties.getApiKey() != null && !properties.getApiKey().isEmpty()) {
-            headers.set("X-Auth-Token", properties.getApiKey());
+            headers.set("X-Api-Token", properties.getApiKey());
         }
 
         return headers;

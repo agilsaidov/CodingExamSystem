@@ -1,6 +1,7 @@
 package com.project.judge.config;
 
 import lombok.Data;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -10,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 public class Judge0Properties {
 
     private String url;
+    @Value("${JUDGE0_AUTHENTICATION_TOKEN}")
     private String apiKey;
     private Integer maxRetries = 3;
     private Integer retryDelayMs = 1000;

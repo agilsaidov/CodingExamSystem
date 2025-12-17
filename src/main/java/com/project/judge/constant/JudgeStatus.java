@@ -1,4 +1,4 @@
-package com.project.judge.utils;
+package com.project.judge.constant;
 
 public class JudgeStatus {
     
