@@ -21,4 +21,15 @@ public class GlobalExceptionHandler {
         );
         return new ResponseEntity<>(exceptionResponse,  HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ExceptionResponse> handleBadRequestException(BadRequestException e) {
+        ExceptionResponse exceptionResponse = new ExceptionResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "BAD_REQUEST_EXCEPTION",
+                e.getMessage(),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(exceptionResponse,  HttpStatus.BAD_REQUEST);
+    }
 }
