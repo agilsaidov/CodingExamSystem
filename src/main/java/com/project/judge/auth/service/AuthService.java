@@ -1,15 +1,19 @@
 package com.project.judge.auth.service;
 
 import com.project.judge.auth.dto.reqeust.LoginRequest;
+import com.project.judge.auth.dto.reqeust.RegistrationRequest;
 import com.project.judge.auth.dto.response.AuthResponse;
 import com.project.judge.auth.dto.response.GroupListResponse;
 import com.project.judge.exception.AuthException;
+import com.project.judge.exception.BadRequestException;
 import com.project.judge.exception.InvalidCredentialsException;
 import com.project.judge.exception.NotFoundException;
 import com.project.judge.model.AppUser;
+import com.project.judge.model.Role;
 import com.project.judge.repository.UserRepo;
 import com.project.judge.security.JwtService;
 import com.project.judge.service.GroupService;
+import com.project.judge.utils.IdGenerator;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -34,12 +38,13 @@ public class AuthService {
     private static final String TOKEN_BLACKLIST_PREFIX = "blisted_token:";
     private static final int BLACKLIST_EXPIRATION = 180;
 
+
     public AuthResponse login(LoginRequest loginRequest) {
         log.info("Login attempt for user: {}", loginRequest.getUsername());
 
         AppUser user = userRepo.findByUsernameAndPassword(
                 loginRequest.getUsername(),
-                loginRequest.getPassword()
+                passwordEncoder.encode(loginRequest.getPassword())
         ).orElseThrow(() -> new InvalidCredentialsException("Given credential(s) are not valid"));
 
         List<GroupListResponse> groups = groupService.getMyGroups(user.getUserId());
@@ -56,6 +61,7 @@ public class AuthService {
         return response;
     }
 
+
     public void logout(String token) {
 
         if(token == null || !token.startsWith("Bearer ")) {
@@ -71,11 +77,55 @@ public class AuthService {
 
         redisTemplate.opsForValue().set(
                 TOKEN_BLACKLIST_PREFIX + bareToken,
-                "",
+                "blacklisted",
                 BLACKLIST_EXPIRATION,
                 TimeUnit.MINUTES
         );
 
-        log.info("Logout is successful");
+        log.info("Logout successful - token blacklisted");
+    }
+
+
+    public void registerStudent(String instructorId, RegistrationRequest request){
+        log.info("Instructor {} registering student: {}", instructorId, request.getUsername());
+
+        if(userRepo.existsByUsername(request.getUsername())){
+            throw new BadRequestException("Username is already in use");
+        }
+
+        String studentId = IdGenerator.generateId("ST", 5);
+
+        AppUser student = AppUser.builder()
+                .userId(studentId)
+                .username(request.getUsername())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .role(Role.STUDENT)
+                .fullName(request.getFullName())
+                .build();
+
+        userRepo.save(student);
+        log.info("Student {} registered successfully", student.getUsername());
+    }
+
+
+    public void registerInstructor(RegistrationRequest request){
+        log.info("Registering instructor: {}", request.getUsername());
+
+        if(userRepo.existsByUsername(request.getUsername())){
+            throw new BadRequestException("Username is already in use");
+        }
+
+        String instructorId = IdGenerator.generateId("IN", 5);
+
+        AppUser instructor = AppUser.builder()
+                .userId(instructorId)
+                .username(request.getUsername())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .fullName(request.getFullName())
+                .role(Role.INSTRUCTOR)
+                .build();
+
+        userRepo.save(instructor);
+        log.info("Instructor {} registered successfully", instructor.getUsername());
     }
 }
