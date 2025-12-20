@@ -32,4 +32,37 @@ public class GlobalExceptionHandler {
         );
         return new ResponseEntity<>(exceptionResponse,  HttpStatus.BAD_REQUEST);
     }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ExceptionResponse> handleNotFoundException(NotFoundException e) {
+        ExceptionResponse exceptionResponse = new ExceptionResponse(
+                HttpStatus.NOT_FOUND.value(),
+                e.getErrorName(),
+                e.getMessage(),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(exceptionResponse,  HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ExceptionResponse> handleInvalidCredentialException(InvalidCredentialsException e){
+        ExceptionResponse exceptionResponse = new ExceptionResponse(
+                HttpStatus.UNAUTHORIZED.value(),
+                "INVALID_CREDENTIALS",
+                e.getMessage(),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(exceptionResponse, HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<ExceptionResponse> handleAuthException(AuthException e) {
+        ExceptionResponse exceptionResponse = new ExceptionResponse(
+                e.getStatus().value(),
+                e.getErrorName(),
+                e.getMessage(),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(exceptionResponse,  e.getStatus());
+    }
 }

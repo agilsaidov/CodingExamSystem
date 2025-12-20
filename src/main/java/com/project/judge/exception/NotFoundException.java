@@ -1,5 +1,8 @@
 package com.project.judge.exception;
 
+import lombok.Getter;
+
+@Getter
 public class NotFoundException extends RuntimeException {
 
     private final String errorName;
