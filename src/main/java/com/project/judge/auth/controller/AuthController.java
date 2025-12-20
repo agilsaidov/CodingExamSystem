@@ -22,9 +22,9 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/students/login")
-    public ResponseEntity<AuthResponse> loginStudent(@Valid @RequestBody LoginRequest loginRequest) {
-        AuthResponse response = authService.loginStudent(loginRequest);
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
+        AuthResponse response = authService.login(loginRequest);
         return ResponseEntity.ok(response);
     }
 }

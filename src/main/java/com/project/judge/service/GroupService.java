@@ -1,0 +1,94 @@
+package com.project.judge.service;
+
+import com.project.judge.auth.dto.response.GroupListResponse;
+import com.project.judge.exception.NotFoundException;
+import com.project.judge.model.*;
+import com.project.judge.repository.ExamRepo;
+import com.project.judge.repository.GroupMemberRepo;
+import com.project.judge.repository.GroupRepo;
+import com.project.judge.repository.UserRepo;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class GroupService {
+
+    private final GroupRepo groupRepo;
+    private final UserRepo userRepo;
+    private final GroupMemberRepo groupMemberRepo;
+    private final ExamRepo examRepo;
+
+
+    @Transactional(readOnly = true)
+    public List<GroupListResponse> getMyGroups(String userId) {
+
+        log.info("Fetching groups for user {}", userId);
+
+        AppUser user = userRepo.findByUserId(userId)
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User not found with userId: " + userId));
+
+        List<Group> groups;
+
+        if(user.getRole() == Role.INSTRUCTOR || user.getRole() == Role.ADMIN){
+            groups = groupRepo.findByInstructorUserId(userId);
+
+        }else{
+
+            List<GroupMember> memberships = groupMemberRepo.findByStudentUserId(userId);
+            groups = memberships.stream()
+                    .map(GroupMember::getGroup)
+                    .collect(Collectors.toList());
+        }
+
+        return groups.stream()
+                .map(group -> mapToGroupListResponse(group, user.getRole(),
+                        user.getRole() == Role.STUDENT ? userId : null))
+                .collect(Collectors.toList());
+
+
+    }
+
+
+
+
+    // Helper Methods
+    private GroupListResponse mapToGroupListResponse(Group group, Role userRole, String studentId) {
+        GroupListResponse.GroupListResponseBuilder builder = GroupListResponse.builder()
+                .groupId(group.getGroupId())
+                .groupName(group.getGroupName())
+                .instructorName(group.getInstructor().getFullName())
+                .memberCount(group.getMembers().size())
+                .createdAt(group.getCreatedAt());
+
+        // Count active exams
+        List<Exam> exams = examRepo.findByGroupGroupId(group.getGroupId());
+        long activeExamCount = exams.stream()
+                .filter(Exam::getIsActive)
+                .filter(this::isExamCurrentlyAvailable)
+                .count();
+        builder.activeExamCount((int) activeExamCount);
+
+        return builder.build();
+    }
+
+
+    private boolean isExamCurrentlyAvailable(Exam exam) {
+        LocalDateTime now = LocalDateTime.now();
+        if (exam.getStartTime() != null && now.isBefore(exam.getStartTime())) {
+            return false;
+        }
+        if (exam.getEndTime() != null && now.isAfter(exam.getEndTime())) {
+            return false;
+        }
+        return true;
+    }
+
+}

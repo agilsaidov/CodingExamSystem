@@ -4,6 +4,8 @@ import com.project.judge.model.Role;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 @Builder
 public class AuthResponse {
@@ -12,4 +14,5 @@ public class AuthResponse {
     private String username;
     private Role role;
     private String fullName;
+    private List<GroupListResponse> groups;
 }
