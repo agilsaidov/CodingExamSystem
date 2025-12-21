@@ -1,12 +1,14 @@
 package com.project.judge.service;
 
 import com.project.judge.auth.dto.response.GroupListResponse;
+import com.project.judge.dto.request.CreateGroupRequest;
 import com.project.judge.exception.NotFoundException;
 import com.project.judge.model.*;
 import com.project.judge.repository.ExamRepo;
 import com.project.judge.repository.GroupMemberRepo;
 import com.project.judge.repository.GroupRepo;
 import com.project.judge.repository.UserRepo;
+import com.project.judge.utils.IdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -54,6 +56,28 @@ public class GroupService {
                 .collect(Collectors.toList());
 
 
+    }
+
+
+    @Transactional
+    public GroupListResponse createGroup(CreateGroupRequest request, String instructorId) {
+        log.info("Creating group: {} by instructor: {}", request.getGroupName(), instructorId);
+
+        AppUser instructor = userRepo.findByUserId(instructorId)
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User not found with userId: " + instructorId));
+
+        String groupId = IdGenerator.generateId("GRP", 5);
+
+        Group group = Group.builder()
+                .groupId(groupId)
+                .groupName(request.getGroupName())
+                .instructor(instructor)
+                .build();
+
+        group = groupRepo.save(group);
+        log.info("Group created successfully: {} ", groupId);
+
+        return mapToGroupListResponse(group, Role.INSTRUCTOR,null);
     }
 
 

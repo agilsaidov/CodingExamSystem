@@ -1,5 +1,6 @@
 package com.project.judge.auth.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
@@ -19,5 +20,6 @@ public class GroupListResponse {
     @JsonProperty("active_exam_count")
     private Integer activeExamCount;
     @JsonProperty("created_at")
+    @JsonFormat(shape =  JsonFormat.Shape.STRING, pattern = "yyyy.MM.dd HH:mm")
     private LocalDateTime createdAt;
 }
