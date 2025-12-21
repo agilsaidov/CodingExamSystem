@@ -19,13 +19,23 @@ public class GroupController {
     private final GroupService groupService;
 
     @PostMapping("/create")
-    @PreAuthorize("hasAnyRole('ADMIN','INSTRUCTOR')")
+    @PreAuthorize("hasAnyRole('INSTRUCTOR')")
     public ResponseEntity<GroupListResponse> createGroup(
             @Valid @RequestBody CreateGroupRequest request,
             Authentication authentication
             ){
         GroupListResponse response = groupService.createGroup(request, authentication.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("{groupId}/members/{studentId}")
+    @PreAuthorize("hasAnyRole('INSTRUCTOR')")
+    public ResponseEntity<Void> addStudent(@PathVariable String groupId,
+                                           @PathVariable String studentId,
+                                           Authentication authentication){
+
+        groupService.addStudentToGroup(groupId, studentId, authentication.getName());
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 }
 

@@ -1,7 +1,9 @@
 package com.project.judge.service;
 
+import com.github.dockerjava.api.exception.UnauthorizedException;
 import com.project.judge.auth.dto.response.GroupListResponse;
 import com.project.judge.dto.request.CreateGroupRequest;
+import com.project.judge.exception.BadRequestException;
 import com.project.judge.exception.NotFoundException;
 import com.project.judge.model.*;
 import com.project.judge.repository.ExamRepo;
@@ -80,6 +82,38 @@ public class GroupService {
         return mapToGroupListResponse(group, Role.INSTRUCTOR,null);
     }
 
+    @Transactional
+    public void addStudentToGroup(String groupId, String studentId, String instructorId) {
+        log.info("Adding student {} to group {}", studentId, groupId);
+
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new NotFoundException("GROUP_NOT_FOUND", "Group not found with groupId: " + groupId));
+
+        if(!group.getInstructor().getUserId().equals(instructorId)){
+            throw new UnauthorizedException("You can only add students to your own groups");
+        }
+
+        AppUser student = userRepo.findByUserId(studentId)
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User not found with studentId: " + studentId));
+
+        if(student.getRole() != Role.STUDENT){
+            throw new BadRequestException("User is not a student");
+        }
+
+        GroupMemberId memberId = new GroupMemberId(groupId, studentId);
+        if(groupMemberRepo.existsById(memberId)){
+            throw new BadRequestException("User is already in group");
+        }
+
+        GroupMember groupMember = GroupMember.builder()
+                .id(memberId)
+                .group(group)
+                .student(student)
+                .build();
+
+        groupMemberRepo.save(groupMember);
+        log.info("Added student {} to group {}", studentId, groupId);
+    }
 
 
 
