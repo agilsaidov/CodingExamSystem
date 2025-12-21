@@ -1,5 +1,6 @@
 package com.project.judge.auth.dto.reqeust;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.project.judge.model.Role;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -22,5 +23,6 @@ public class RegistrationRequest {
 
     @NotBlank(message = "Full name is required")
     @Size(max = 100)
+    @JsonProperty("full_name")
     private String fullName;
 }

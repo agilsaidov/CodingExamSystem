@@ -7,11 +7,10 @@ import com.project.judge.auth.dto.response.GroupListResponse;
 import com.project.judge.exception.AuthException;
 import com.project.judge.exception.BadRequestException;
 import com.project.judge.exception.InvalidCredentialsException;
-import com.project.judge.exception.NotFoundException;
 import com.project.judge.model.AppUser;
 import com.project.judge.model.Role;
 import com.project.judge.repository.UserRepo;
-import com.project.judge.security.JwtService;
+import com.project.judge.security.jwt.JwtService;
 import com.project.judge.service.GroupService;
 import com.project.judge.utils.IdGenerator;
 import lombok.AllArgsConstructor;
@@ -42,10 +41,12 @@ public class AuthService {
     public AuthResponse login(LoginRequest loginRequest) {
         log.info("Login attempt for user: {}", loginRequest.getUsername());
 
-        AppUser user = userRepo.findByUsernameAndPassword(
-                loginRequest.getUsername(),
-                passwordEncoder.encode(loginRequest.getPassword())
-        ).orElseThrow(() -> new InvalidCredentialsException("Given credential(s) are not valid"));
+        AppUser user = userRepo.findByUsername(loginRequest.getUsername())
+                .orElse(null);
+
+        if (user == null || !passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
+            throw new InvalidCredentialsException("Given credential(s) are not valid");
+        }
 
         List<GroupListResponse> groups = groupService.getMyGroups(user.getUserId());
 
@@ -58,13 +59,14 @@ public class AuthService {
                 .groups(groups)
                 .build();
 
+        log.info("Logged in successfully");
         return response;
     }
 
 
     public void logout(String token) {
 
-        if(token == null || !token.startsWith("Bearer ")) {
+        if(token == null || token.isBlank()) {
             throw new AuthException(
                     HttpStatus.UNAUTHORIZED,
                     "INVALID_TOKEN",

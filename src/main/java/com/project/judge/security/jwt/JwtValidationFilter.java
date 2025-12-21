@@ -1,4 +1,4 @@
-package com.project.judge.security;
+package com.project.judge.security.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.judge.dto.response.ExceptionResponse;
@@ -14,7 +14,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.authentication.WebAuthenticationDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -96,7 +95,7 @@ public class JwtValidationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
 
-        return path.startsWith("/api/v1/login") ||
+        return path.startsWith("/api/v1/auth/login") ||
                 path.startsWith("/api/v1/judge/");
     }
 
