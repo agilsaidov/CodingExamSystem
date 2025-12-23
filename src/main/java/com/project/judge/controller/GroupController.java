@@ -37,5 +37,17 @@ public class GroupController {
         groupService.addStudentToGroup(groupId, studentId, authentication.getName());
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
+
+    @DeleteMapping("delete/{groupId}")
+    @PreAuthorize("hasAnyRole('INSTRUCTOR')")
+    public ResponseEntity<Void> deleteGroup(
+            @PathVariable String groupId,
+            Authentication authentication){
+
+        String instructorId = authentication.getName();
+        groupService.deleteGroup(groupId, instructorId);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
 }
 

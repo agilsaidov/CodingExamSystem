@@ -162,6 +162,22 @@ public class GroupService {
     }
 
 
+    @Transactional
+    public void deleteGroup(String groupId, String instructorId) {
+        log.info("Deleting group {} by user {}", groupId, instructorId);
+
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new NotFoundException("GROUP_NOT_FOUND", "Group not found with groupId: " + groupId));
+
+        if(!group.getInstructor().getUserId().equals(instructorId)){
+            throw new UnauthorizedException("You can only delete your own groups");
+        }
+
+        groupRepo.delete(group);
+        log.info("Deleted group {} by user {}", groupId, instructorId);
+    }
+
+
     // Helper Methods
     private GroupListResponse mapToGroupListResponse(Group group, Role userRole, String studentId) {
         GroupListResponse.GroupListResponseBuilder builder = GroupListResponse.builder()
