@@ -3,19 +3,18 @@ package com.project.judge.service;
 import com.github.dockerjava.api.exception.UnauthorizedException;
 import com.project.judge.auth.dto.response.GroupListResponse;
 import com.project.judge.dto.request.CreateGroupRequest;
+import com.project.judge.dto.response.GroupDetailResponse;
 import com.project.judge.exception.BadRequestException;
 import com.project.judge.exception.NotFoundException;
 import com.project.judge.model.*;
-import com.project.judge.repository.ExamRepo;
-import com.project.judge.repository.GroupMemberRepo;
-import com.project.judge.repository.GroupRepo;
-import com.project.judge.repository.UserRepo;
+import com.project.judge.repository.*;
 import com.project.judge.utils.IdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -29,6 +28,7 @@ public class GroupService {
     private final UserRepo userRepo;
     private final GroupMemberRepo groupMemberRepo;
     private final ExamRepo examRepo;
+    private final ExamResultRepo examResultRepo;
 
 
     @Transactional(readOnly = true)
@@ -58,6 +58,29 @@ public class GroupService {
                 .collect(Collectors.toList());
 
 
+    }
+
+
+    @Transactional(readOnly = true)
+    public GroupDetailResponse getGroupDetails(String groupId, String userId){
+        log.info("Fetching group details {} for user {}", groupId, userId);
+
+        Group group = groupRepo.findByIdWithMembers(groupId)
+                .orElseThrow(() -> new NotFoundException("GROUP_NOT_FOUND","Group not found"));
+
+        AppUser user = userRepo.findById(userId)
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User not found with userId: " + userId));
+
+        boolean isInstructor = group.getInstructor().getUserId().equals(userId);
+        boolean isAdmin = user.getRole() == Role.ADMIN;
+        boolean isMember = user.getRole() == Role.STUDENT &&
+                groupMemberRepo.existsById(new GroupMemberId(groupId, userId));
+
+        if (!isInstructor && !isAdmin && !isMember) {
+            throw new UnauthorizedException("You don't have access to this group");
+        }
+
+        return mapToGroupDetailResponse(group, user);
     }
 
 
@@ -117,6 +140,28 @@ public class GroupService {
 
 
 
+    @Transactional
+    public void removeStudentFromGroup(String groupId, String studentId, String instructorId) {
+        log.info("Removing student {} from group {}", studentId, groupId);
+
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new NotFoundException("GROUP_NOT_FOUND", "Group not found with groupId: " + groupId));
+
+        if(!group.getInstructor().getUserId().equals(instructorId)){
+            throw new UnauthorizedException("You can only remove students from your own groups");
+        }
+
+        GroupMemberId memberId = new GroupMemberId(groupId, studentId);
+        if(!groupMemberRepo.existsById(memberId)){
+            throw new NotFoundException("MEMBER_NOT_FOUND","Student is not a member of this group");
+        }
+
+        groupMemberRepo.deleteById(memberId);
+        log.info("Removed student {} from group {}", studentId, groupId);
+
+    }
+
+
     // Helper Methods
     private GroupListResponse mapToGroupListResponse(Group group, Role userRole, String studentId) {
         GroupListResponse.GroupListResponseBuilder builder = GroupListResponse.builder()
@@ -148,5 +193,115 @@ public class GroupService {
         }
         return true;
     }
+
+
+    private GroupDetailResponse mapToGroupDetailResponse(Group group, AppUser user) {
+        boolean isTeacherOrAdmin = user.getRole() == Role.INSTRUCTOR || user.getRole() == Role.ADMIN;
+        boolean isStudent = user.getRole() == Role.STUDENT;
+
+        GroupDetailResponse.GroupDetailResponseBuilder builder = GroupDetailResponse.builder()
+                .groupId(group.getGroupId())
+                .groupName(group.getGroupName())
+                .instructorId(group.getInstructor().getUserId())
+                .instructorName(group.getInstructor().getFullName())
+                .memberCount(group.getMembers().size())
+                .createdAt(group.getCreatedAt());
+
+
+        if (isTeacherOrAdmin) {
+            List<GroupDetailResponse.MemberInfo> members = group.getMembers().stream()
+                    .map(m -> GroupDetailResponse.MemberInfo.builder()
+                            .studentId(m.getStudent().getUserId())
+                            .studentName(m.getStudent().getFullName())
+                            .username(m.getStudent().getUsername())
+                            .joinedAt(m.getJoinedAt())
+                            .build())
+                    .collect(Collectors.toList());
+            builder.members(members);
+        }
+
+        List<Exam> exams = examRepo.findByGroupGroupId(group.getGroupId());
+
+        if (isStudent) {
+            exams = exams.stream()
+                    .filter(Exam::getIsActive)
+                    .filter(this::isExamCurrentlyAvailable)
+                    .collect(Collectors.toList());
+        }
+
+        List<GroupDetailResponse.ExamSummary> examSummaries = exams.stream()
+                .map(exam -> mapToExamSummary(exam, user))
+                .collect(Collectors.toList());
+
+        builder.exams(examSummaries);
+
+        return builder.build();
+    }
+
+
+
+    private GroupDetailResponse.ExamSummary mapToExamSummary(Exam exam, AppUser user) {
+        boolean isStudent = user.getRole() == Role.STUDENT;
+        boolean isTeacherOrAdmin = user.getRole() == Role.INSTRUCTOR || user.getRole() == Role.ADMIN;
+
+        GroupDetailResponse.ExamSummary.ExamSummaryBuilder builder = GroupDetailResponse.ExamSummary.builder()
+                .examId(exam.getExamId())
+                .title(exam.getTitle())
+                .description(exam.getDescription())
+                .startTime(exam.getStartTime())
+                .endTime(exam.getEndTime())
+                .durationMinutes(exam.getDurationMinutes())
+                .isActive(exam.getIsActive())
+                .problemCount(exam.getProblems().size())
+                .totalPoints(exam.getProblems().stream()
+                        .mapToInt(Problem::getPoints)
+                        .sum());
+
+        if (isStudent) {
+            examResultRepo.findByExamExamIdAndStudentUserId(exam.getExamId(), user.getUserId())
+                    .ifPresent(result -> {
+                        builder.myStatus(result.getStatus());
+                        builder.myScore(result.getTotalScore());
+                        builder.myPercentage(result.getPercentage());
+                        builder.myStartedAt(result.getStartedAt());
+
+                        // Calculate remaining time
+                        if (result.getStatus() == ExamStatus.IN_PROGRESS &&
+                                exam.getDurationMinutes() != null &&
+                                result.getStartedAt() != null) {
+
+                            LocalDateTime deadline = result.getStartedAt()
+                                    .plusMinutes(exam.getDurationMinutes());
+                            long minutesRemaining = Duration.between(LocalDateTime.now(), deadline).toMinutes();
+                            builder.myTimeRemainingMinutes((int) Math.max(0, minutesRemaining));
+                        }
+                    });
+        }
+
+        if (isTeacherOrAdmin) {
+            List<ExamResult> results = examResultRepo.findByExamExamId(exam.getExamId());
+
+            long studentsStarted = results.stream()
+                    .filter(r -> r.getStatus() != ExamStatus.NOT_STARTED)
+                    .count();
+
+            long studentsCompleted = results.stream()
+                    .filter(r -> r.getStatus() == ExamStatus.COMPLETED)
+                    .count();
+
+            double averageScore = results.stream()
+                    .filter(r -> r.getStatus() == ExamStatus.COMPLETED)
+                    .mapToInt(ExamResult::getTotalScore)
+                    .average()
+                    .orElse(0.0);
+
+            builder.studentsStarted((int) studentsStarted);
+            builder.studentsCompleted((int) studentsCompleted);
+            builder.averageScore(averageScore);
+        }
+
+        return builder.build();
+    }
+
 
 }
