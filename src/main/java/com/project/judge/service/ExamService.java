@@ -8,6 +8,7 @@ import com.project.judge.exception.NotFoundException;
 import com.project.judge.model.AppUser;
 import com.project.judge.model.Exam;
 import com.project.judge.model.Group;
+import com.project.judge.model.Problem;
 import com.project.judge.repository.ExamRepo;
 import com.project.judge.repository.GroupMemberRepo;
 import com.project.judge.repository.GroupRepo;
@@ -65,6 +66,54 @@ public class ExamService {
 
         return mapToExamResponse(exam);
     }
+
+
+    public void activateExam(String examId, String instructorId){
+        log.info("Activating exam: {} by user: {}", examId, instructorId);
+
+        Exam exam = examRepo.findById(examId)
+                .orElseThrow(() -> new NotFoundException("EXAM_NOT_FOUND", "Exam not found with id: " + examId));
+
+        if(!exam.getInstructor().getUserId().equals(instructorId)){
+            throw new UnauthorizedException("You can only activate exams created by you");
+        }
+
+        if(exam.getProblems().isEmpty()){
+            throw new BadRequestException("Cannot activate exam without problems");
+        }
+
+        for(Problem problem : exam.getProblems()){
+            if(problem.getTestCases().isEmpty()){
+                throw new BadRequestException(
+                        String.format("Problem '%s' has no test cases", problem.getTitle())
+                );
+            }
+        }
+
+        exam.setIsActive(true);
+        examRepo.save(exam);
+
+        log.info("Exam {} activated successfully with {} problems",
+                examId, exam.getProblems().size());
+    }
+
+
+    public void deactivateExam(String examId, String instructorId){
+        log.info("Deactivating exam: {} by user: {}", examId, instructorId);
+
+        Exam exam = examRepo.findById(examId)
+                .orElseThrow(() -> new NotFoundException("EXAM_NOT_FOUND", "Exam not found with id: " + examId));
+
+        if(!exam.getInstructor().getUserId().equals(instructorId)){
+            throw new UnauthorizedException("You can only deactivate exams created by you");
+        }
+
+        exam.setIsActive(false);
+        examRepo.save(exam);
+        log.info("Exam {} deactivated successfully", examId);
+    }
+
+
 
 
     //Helper methods
