@@ -5,10 +5,7 @@ import com.project.judge.dto.request.CreateExamRequest;
 import com.project.judge.dto.response.ExamResponse;
 import com.project.judge.exception.BadRequestException;
 import com.project.judge.exception.NotFoundException;
-import com.project.judge.model.AppUser;
-import com.project.judge.model.Exam;
-import com.project.judge.model.Group;
-import com.project.judge.model.Problem;
+import com.project.judge.model.*;
 import com.project.judge.repository.ExamRepo;
 import com.project.judge.repository.GroupMemberRepo;
 import com.project.judge.repository.GroupRepo;
@@ -17,6 +14,11 @@ import com.project.judge.utils.IdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +28,7 @@ public class ExamService {
     private final ExamRepo examRepo;
     private final GroupRepo groupRepo;
     private final UserRepo userRepo;
+    private final GroupMemberRepo groupMemberRepo;
 
     public ExamResponse createExam(CreateExamRequest request, String instructorId){
         log.info("Creating exam: {} for group: {}", request.getTitle(), request.getGroupId());
@@ -114,6 +117,44 @@ public class ExamService {
     }
 
 
+    @Transactional(readOnly = true)
+    public List<ExamResponse> getGroupExams(String groupId, String userId){
+        log.info("Fetching exams for group {}", groupId);
+
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new NotFoundException(
+                        "GROUP_NOT_FOUND",
+                        "Group not found with id: " + groupId)
+                );
+
+        AppUser user = userRepo.findByUserId(userId)
+                .orElseThrow(() -> new NotFoundException(
+                        "USER_NOT_FOUND",
+                        "User not found with id: " + userId)
+                );
+
+        boolean isInstructor = group.getInstructor().getUserId().equals(userId);
+        boolean isMember = groupMemberRepo.existsById(new GroupMemberId(groupId, userId));
+        boolean isAdmin = user.getRole() == Role.ADMIN;
+
+        if(!isInstructor && !isMember && !isAdmin){
+            throw new UnauthorizedException("You don't have access to this group");
+        }
+
+        List<Exam> exams = examRepo.findByGroupGroupId(groupId);
+
+        if(user.getRole() == Role.STUDENT && !isInstructor && !isAdmin){
+            LocalDateTime now = LocalDateTime.now();
+            exams = exams.stream()
+                    .filter(exam -> exam.getIsActive() && isExamAvailable(exam, now))
+                    .toList();
+        }
+
+        return exams.stream()
+                .map(this::mapToExamResponse)
+                .toList();
+    }
+
 
 
     //Helper methods
@@ -132,5 +173,12 @@ public class ExamService {
                 .problemCount(exam.getProblems().size())
                 .createdAt(exam.getCreatedAt())
                 .build();
+    }
+
+    private boolean isExamAvailable(Exam exam, LocalDateTime now) {
+        if (exam.getStartTime() == null || exam.getEndTime() == null) {
+            return true; // No time restrictions
+        }
+        return !now.isBefore(exam.getStartTime()) && !now.isAfter(exam.getEndTime());
     }
 }
