@@ -2,6 +2,7 @@ package com.project.judge.service;
 
 import com.github.dockerjava.api.exception.UnauthorizedException;
 import com.project.judge.dto.request.CreateExamRequest;
+import com.project.judge.dto.request.UpdateExamRequest;
 import com.project.judge.dto.response.ExamDetailResponse;
 import com.project.judge.dto.response.ExamResponse;
 import com.project.judge.exception.BadRequestException;
@@ -184,6 +185,45 @@ public class ExamService {
         }
 
         return mapToExamDetailsResponse(exam, user);
+    }
+
+
+
+    @Transactional
+    public ExamResponse updateExam(String examId, UpdateExamRequest request, String instructorId){
+        log.info("Updating exam {}", examId);
+
+        Exam exam = examRepo.findById(examId)
+                .orElseThrow(() -> new NotFoundException("EXAM_NOT_FOUND", "Exam not found"));
+
+        if(!exam.getInstructor().getUserId().equals(instructorId)){
+            throw new UnauthorizedException("You can only update exams created by you");
+        }
+
+        long startedCount = examResultRepo.findByExamExamId(examId).stream().
+                filter(r -> r.getStatus() != ExamStatus.NOT_STARTED)
+                .count();
+
+        if(startedCount > 0){
+            throw new BadRequestException("Cannot update exam - students have already started");
+        }
+
+        if (request.getTitle() != null) exam.setTitle(request.getTitle());
+        if (request.getDescription() != null) exam.setDescription(request.getDescription());
+        if (request.getStartTime() != null) exam.setStartTime(request.getStartTime());
+        if (request.getEndTime() != null) exam.setEndTime(request.getEndTime());
+        if (request.getDurationMinutes() != null) exam.setDurationMinutes(request.getDurationMinutes());
+
+        if (exam.getStartTime() != null && exam.getEndTime() != null) {
+            if (exam.getEndTime().isBefore(exam.getStartTime())) {
+                throw new BadRequestException("End time must be after start time");
+            }
+        }
+
+        examRepo.save(exam);
+        log.info("Exam {} updated successfully", examId);
+
+        return mapToExamResponse(exam);
     }
 
 
