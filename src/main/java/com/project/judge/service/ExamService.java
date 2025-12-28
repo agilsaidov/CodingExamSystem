@@ -2,14 +2,12 @@ package com.project.judge.service;
 
 import com.github.dockerjava.api.exception.UnauthorizedException;
 import com.project.judge.dto.request.CreateExamRequest;
+import com.project.judge.dto.response.ExamDetailResponse;
 import com.project.judge.dto.response.ExamResponse;
 import com.project.judge.exception.BadRequestException;
 import com.project.judge.exception.NotFoundException;
 import com.project.judge.model.*;
-import com.project.judge.repository.ExamRepo;
-import com.project.judge.repository.GroupMemberRepo;
-import com.project.judge.repository.GroupRepo;
-import com.project.judge.repository.UserRepo;
+import com.project.judge.repository.*;
 import com.project.judge.utils.IdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,7 +28,10 @@ public class ExamService {
     private final GroupRepo groupRepo;
     private final UserRepo userRepo;
     private final GroupMemberRepo groupMemberRepo;
+    private final SubmissionRepo submissionRepo;
+    private final ExamResultRepo examResultRepo;
 
+    @Transactional
     public ExamResponse createExam(CreateExamRequest request, String instructorId){
         log.info("Creating exam: {} for group: {}", request.getTitle(), request.getGroupId());
 
@@ -70,7 +72,7 @@ public class ExamService {
         return mapToExamResponse(exam);
     }
 
-
+    @Transactional
     public void activateExam(String examId, String instructorId){
         log.info("Activating exam: {} by user: {}", examId, instructorId);
 
@@ -101,6 +103,7 @@ public class ExamService {
     }
 
 
+    @Transactional
     public void deactivateExam(String examId, String instructorId){
         log.info("Deactivating exam: {} by user: {}", examId, instructorId);
 
@@ -115,6 +118,7 @@ public class ExamService {
         examRepo.save(exam);
         log.info("Exam {} deactivated successfully", examId);
     }
+
 
 
     @Transactional(readOnly = true)
@@ -156,6 +160,33 @@ public class ExamService {
     }
 
 
+    public ExamDetailResponse getExamDetails(String examId, String userId){
+        log.info("Fetching exam details{} for user: {}", examId, userId);
+
+        Exam exam = examRepo.findByIdWithProblems(examId)
+                .orElseThrow(() -> new NotFoundException("EXAM_NOT_FOUND", "Exam not found"));
+
+        AppUser user = userRepo.findByUserId(userId)
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User not found"));
+
+        boolean isInstructor = exam.getInstructor().getUserId().equals(userId);
+        boolean isMember = groupMemberRepo.existsById(new GroupMemberId(exam.getGroup().getGroupId(), userId));
+        boolean isAdmin = user.getRole() == Role.ADMIN;
+
+        if(!isInstructor && !isMember && !isAdmin){
+            throw new UnauthorizedException("You don't have access to this exam");
+        }
+
+        if(user.getRole() == Role.STUDENT && !isInstructor){
+            if(!exam.getIsActive() || !isExamAvailable(exam, LocalDateTime.now())){
+                throw new UnauthorizedException("This exam is not currently available");
+            }
+        }
+
+        return mapToExamDetailsResponse(exam, user);
+    }
+
+
 
     //Helper methods
     private ExamResponse mapToExamResponse(Exam exam) {
@@ -173,6 +204,137 @@ public class ExamService {
                 .problemCount(exam.getProblems().size())
                 .createdAt(exam.getCreatedAt())
                 .build();
+    }
+
+
+    private ExamDetailResponse mapToExamDetailsResponse(Exam exam, AppUser user){
+        boolean isStudent = user.getRole() == Role.STUDENT;
+        boolean isAdmin = user.getRole() == Role.ADMIN;
+        boolean isInstructor = exam.getInstructor().getUserId().equals(user.getUserId());
+
+        ExamDetailResponse.ExamDetailResponseBuilder builder = ExamDetailResponse.builder()
+                .examId(exam.getExamId())
+                .title(exam.getTitle())
+                .description(exam.getDescription())
+                .groupId(exam.getGroup().getGroupId())
+                .groupName(exam.getGroup().getGroupName())
+                .instructorName(exam.getInstructor().getFullName())
+                .startTime(exam.getStartTime())
+                .endTime(exam.getEndTime())
+                .durationMinutes(exam.getDurationMinutes())
+                .isActive(exam.getIsActive())
+                .createdAt(exam.getCreatedAt());
+
+        List<ExamDetailResponse.ProblemInfo> problemInfos = exam.getProblems().stream()
+                .sorted(Comparator.comparingInt(p -> p.getOrderIndex() != null ? p.getOrderIndex() : 0))
+                .map(p -> mapToProblemInfo(p, isStudent, user.getUserId()))
+                .collect(Collectors.toList());
+        builder.problems(problemInfos);
+
+        if(isStudent){
+            examResultRepo.findByExamExamIdAndStudentUserId(exam.getExamId(), user.getUserId())
+                    .ifPresent(result -> {
+                        builder.studentStatus(result.getStatus());
+                        builder.studentScore(result.getTotalScore());
+                        builder.studentPercentage(result.getPercentage());
+                        builder.studentStartedAt(result.getStartedAt());
+                        builder.studentTimeSpentMinutes(result.getTimeSpentMinutes());
+
+                        // Calculate remaining time
+                        if (result.getStatus() == ExamStatus.IN_PROGRESS &&
+                                exam.getDurationMinutes() != null &&
+                                result.getStartedAt() != null) {
+
+                            LocalDateTime deadline = result.getStartedAt()
+                                    .plusMinutes(exam.getDurationMinutes());
+                            long minutesRemaining = java.time.Duration
+                                    .between(LocalDateTime.now(), deadline).toMinutes();
+                            builder.studentTimeRemainingMinutes((int) Math.max(0, minutesRemaining));
+                        }
+                    });
+        }
+
+        if (isInstructor || isAdmin) {
+            List<ExamResult> results = examResultRepo.findByExamExamId(exam.getExamId());
+
+            long studentsStarted = results.stream()
+                    .filter(r -> r.getStatus() != ExamStatus.NOT_STARTED)
+                    .count();
+
+            long studentsCompleted = results.stream()
+                    .filter(r -> r.getStatus() == ExamStatus.COMPLETED)
+                    .count();
+
+            double averageScore = results.stream()
+                    .filter(r -> r.getStatus() == ExamStatus.COMPLETED)
+                    .mapToInt(ExamResult::getTotalScore)
+                    .average()
+                    .orElse(0.0);
+
+            int highestScore = results.stream()
+                    .filter(r -> r.getStatus() == ExamStatus.COMPLETED)
+                    .mapToInt(ExamResult::getTotalScore)
+                    .max()
+                    .orElse(0);
+
+            int lowestScore = results.stream()
+                    .filter(r -> r.getStatus() == ExamStatus.COMPLETED)
+                    .mapToInt(ExamResult::getTotalScore)
+                    .min()
+                    .orElse(0);
+
+            ExamDetailResponse.ExamStatistics statistics = ExamDetailResponse.ExamStatistics.builder()
+                    .totalStudents(exam.getGroup().getMembers().size())
+                    .studentsStarted((int) studentsStarted)
+                    .studentsCompleted((int) studentsCompleted)
+                    .averageScore(averageScore)
+                    .highestScore(highestScore)
+                    .lowestScore(lowestScore)
+                    .build();
+
+            builder.statistics(statistics);
+        }
+
+        return builder.build();
+
+    }
+
+
+
+    private ExamDetailResponse.ProblemInfo mapToProblemInfo(
+            Problem problem, boolean isStudent, String studentId) {
+
+        ExamDetailResponse.ProblemInfo.ProblemInfoBuilder builder =
+                ExamDetailResponse.ProblemInfo.builder()
+                        .problemId(problem.getProblemId())
+                        .title(problem.getTitle())
+                        .description(problem.getDescription())
+                        .points(problem.getPoints())
+                        .timeLimit(problem.getTimeLimit())
+                        .memoryLimit(problem.getMemoryLimit())
+                        .orderIndex(problem.getOrderIndex());
+
+        if(!isStudent){
+            builder.testCaseCount(problem.getTestCases().size());
+        }
+
+        if(isStudent){
+            List<Submission> submissions = submissionRepo
+                    .findByStudentUserIdAndProblemProblemIdOrderBySubmittedAtDesc(
+                            studentId, problem.getProblemId());
+
+            if(!submissions.isEmpty()){
+                Submission bestSubmission = submissions.stream()
+                        .max(Comparator.comparingInt(s -> s.getScore() != null ? s.getScore() : 0))
+                        .orElse(null);
+
+                builder.myBestScore(bestSubmission.getScore());
+                builder.myBestStatus(bestSubmission.getStatus());
+                builder.myAttempts(submissions.size());
+            }
+        }
+
+        return builder.build();
     }
 
     private boolean isExamAvailable(Exam exam, LocalDateTime now) {
