@@ -4,6 +4,7 @@ import com.github.dockerjava.api.exception.UnauthorizedException;
 import com.project.judge.constant.JudgeStatus;
 import com.project.judge.dto.request.SubmitCodeRequest;
 import com.project.judge.dto.response.JudgeSubmissionResponse;
+import com.project.judge.dto.response.SubmissionDetailResponse;
 import com.project.judge.dto.response.SubmissionResponse;
 import com.project.judge.exception.BadRequestException;
 import com.project.judge.exception.NotFoundException;
@@ -94,7 +95,27 @@ public class SubmissionService {
 
 
 
+    @Transactional(readOnly = true)
+    public SubmissionDetailResponse getSubmissionDetails(Long submissionId, String userId){
+        log.info("Fetching submission details: {} for user: {}", submissionId, userId);
 
+        Submission submission = submissionRepo.findByIdWithTestCaseResults(submissionId)
+                .orElseThrow(() -> new NotFoundException("SUBMISSION_NOT_FOUND", "Submission not found"));
+
+        AppUser user = userRepo.findByUserId(userId)
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User not found"));
+
+        boolean isOwner = submission.getStudent().getUserId().equals(userId);
+        boolean isInstructor = submission.getProblem().getExam().getInstructor()
+                .getUserId().equals(userId);
+        boolean isAdmin = user.getRole() == Role.ADMIN;
+
+        if (!isOwner && !isInstructor && !isAdmin) {
+            throw new UnauthorizedException("You don't have access to this submission");
+        }
+
+        return mapToSubmissionDetailResponse(submission, isOwner || isInstructor || isAdmin);
+    }
 
 
 
@@ -259,5 +280,51 @@ public class SubmissionService {
                 .judgedAt(submission.getJudgedAt())
                 .build();
     }
+
+    private SubmissionDetailResponse mapToSubmissionDetailResponse(
+            Submission submission, boolean includeDetails) {
+
+        SubmissionDetailResponse response = SubmissionDetailResponse.builder()
+                .submissionId(submission.getSubmissionId())
+                .problemId(submission.getProblem().getProblemId())
+                .problemTitle(submission.getProblem().getTitle())
+                .studentId(submission.getStudent().getUserId())
+                .studentName(submission.getStudent().getFullName())
+                .sourceCode(submission.getSourceCode())
+                .languageId(submission.getLanguageId())
+                .status(submission.getStatus())
+                .score(submission.getScore())
+                .passedTestCases(submission.getPassedTestCases())
+                .totalTestCases(submission.getTotalTestCases())
+                .submittedAt(submission.getSubmittedAt())
+                .judgedAt(submission.getJudgedAt())
+                .build();
+
+        if (includeDetails) {
+            response.setTestCaseResults(submission.getTestCaseResults().stream()
+                    .map(this::mapToTestCaseResultInfo)
+                    .collect(Collectors.toList()));
+        }
+
+        return response;
+    }
+
+
+    private SubmissionDetailResponse.TestCaseResultInfo mapToTestCaseResultInfo(
+            TestCaseResult result) {
+        return SubmissionDetailResponse.TestCaseResultInfo.builder()
+                .testCaseId(result.getTestCase().getTestCaseId())
+                .isHidden(result.getTestCase().getIsHidden())
+                .status(result.getStatus())
+                .executionTime(result.getExecutionTime())
+                .memoryUsed(result.getMemoryUsed())
+                .input(result.getTestCase().getIsHidden() ? null : result.getTestCase().getInput())
+                .expectedOutput(result.getTestCase().getIsHidden() ? null :
+                        result.getTestCase().getExpectedOutput())
+                .actualOutput(result.getTestCase().getIsHidden() ? null : result.getActualOutput())
+                .stderr(result.getStderr())
+                .build();
+    }
+
 
 }
