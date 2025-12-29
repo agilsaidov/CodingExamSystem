@@ -1,6 +1,7 @@
 package com.project.judge.controller;
 
 import com.project.judge.dto.request.CreateExamRequest;
+import com.project.judge.dto.request.UpdateExamRequest;
 import com.project.judge.dto.response.ExamDetailResponse;
 import com.project.judge.dto.response.ExamResponse;
 import com.project.judge.service.ExamService;
@@ -64,4 +65,13 @@ public class ExamController {
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
+
+    @PutMapping("/{examId}")
+    public ResponseEntity<ExamResponse> updateExam(@PathVariable String examId,
+                                                   @Valid @RequestBody UpdateExamRequest request,
+                                                   Authentication authentication){
+
+        ExamResponse response = examService.updateExam(examId, request, authentication.getName());
+        return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
 }
