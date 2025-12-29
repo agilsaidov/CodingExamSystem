@@ -227,6 +227,32 @@ public class ExamService {
     }
 
 
+    public void deleteExam(String examId, String userId){
+        log.info("Deleting exam {}", examId);
+
+        Exam exam = examRepo.findById(examId)
+                .orElseThrow(() -> new NotFoundException("EXAM_NOT_FOUND", "Exam not found"));
+
+        AppUser user = userRepo.findByUserId(userId)
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User not found"));
+
+        if(!exam.getInstructor().getUserId().equals(userId)){
+            throw new UnauthorizedException("You can only delete exams created by you");
+        }
+
+        long startedCount = examResultRepo.findByExamExamId(examId).stream()
+                .filter(r -> r.getStatus() != ExamStatus.NOT_STARTED)
+                .count();
+
+        if (startedCount > 0) {
+            throw new BadRequestException("Cannot delete exam - students have already started or finished");
+        }
+
+        examRepo.delete(exam);
+        log.info("Exam {} deleted successfully", examId);
+    }
+
+
 
     //Helper methods
     private ExamResponse mapToExamResponse(Exam exam) {

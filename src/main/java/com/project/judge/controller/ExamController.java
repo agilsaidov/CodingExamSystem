@@ -74,4 +74,13 @@ public class ExamController {
         ExamResponse response = examService.updateExam(examId, request, authentication.getName());
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }
+
+
+    @DeleteMapping("/{examId}")
+    public ResponseEntity<Void> deleteExam(@PathVariable String examId,
+                                           Authentication authentication){
+
+        examService.deleteExam(examId, authentication.getName());
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
 }
