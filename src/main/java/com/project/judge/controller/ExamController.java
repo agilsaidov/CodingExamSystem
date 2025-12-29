@@ -67,6 +67,7 @@ public class ExamController {
 
 
     @PutMapping("/{examId}")
+    @PreAuthorize("hasAnyRole('INSTRUCTOR')")
     public ResponseEntity<ExamResponse> updateExam(@PathVariable String examId,
                                                    @Valid @RequestBody UpdateExamRequest request,
                                                    Authentication authentication){
@@ -77,6 +78,7 @@ public class ExamController {
 
 
     @DeleteMapping("/{examId}")
+    @PreAuthorize("hasAnyRole('INSTRUCTOR')")
     public ResponseEntity<Void> deleteExam(@PathVariable String examId,
                                            Authentication authentication){
 

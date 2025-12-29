@@ -11,4 +11,7 @@ public interface SubmissionRepo extends JpaRepository<Submission, Long> {
 
     List<Submission> findByStudentUserIdAndProblemProblemIdOrderBySubmittedAtDesc(
             String studentId, Long problemId);
+
+    List<Submission> findByStudentUserIdAndProblemExamExamId(String studentId, String examId);
+
 }
