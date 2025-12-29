@@ -94,7 +94,6 @@ public class SubmissionService {
     }
 
 
-
     @Transactional(readOnly = true)
     public SubmissionDetailResponse getSubmissionDetails(Long submissionId, String userId){
         log.info("Fetching submission details: {} for user: {}", submissionId, userId);
@@ -118,6 +117,44 @@ public class SubmissionService {
     }
 
 
+    @Transactional(readOnly = true)
+    public List<SubmissionResponse> getProblemSubmissions(Long problemId, String studentId) {
+        log.info("Fetching submissions for problem: {} by student: {}", problemId, studentId);
+
+        List<Submission> submissions = submissionRepo
+                .findByStudentUserIdAndProblemProblemIdOrderBySubmittedAtDesc(
+                        studentId, problemId);
+
+        return submissions.stream()
+                .map(this::mapToSubmissionResponse)
+                .collect(Collectors.toList());
+    }
+
+
+    @Transactional
+    public void finishExam(String examId, String studentId) {
+        log.info("Student {} finishing exam {}", studentId, examId);
+
+        ExamResult examResult = examResultRepo
+                .findByExamExamIdAndStudentUserId(examId, studentId)
+                .orElseThrow(() -> new NotFoundException("RESULT_NOT_FOUND","Exam result not found"));
+
+        if (examResult.getStatus() == ExamStatus.COMPLETED) {
+            throw new BadRequestException("Exam already completed");
+        }
+
+        examResult.setStatus(ExamStatus.COMPLETED);
+        examResult.setFinishedAt(LocalDateTime.now());
+
+        if (examResult.getStartedAt() != null) {
+            long minutes = java.time.Duration.between(
+                    examResult.getStartedAt(), examResult.getFinishedAt()).toMinutes();
+            examResult.setTimeSpentMinutes((int) minutes);
+        }
+
+        examResultRepo.save(examResult);
+        log.info("Exam {} completed by student {}", examId, studentId);
+    }
 
 
     //Helper methods
