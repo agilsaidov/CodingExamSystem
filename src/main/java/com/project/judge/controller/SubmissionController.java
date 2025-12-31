@@ -1,0 +1,31 @@
+package com.project.judge.controller;
+
+import com.project.judge.dto.request.SubmitCodeRequest;
+import com.project.judge.dto.response.SubmissionResponse;
+import com.project.judge.service.SubmissionService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/v1/submissions")
+@RequiredArgsConstructor
+public class SubmissionController {
+
+    private final SubmissionService submissionService;
+
+    @PostMapping("/submit")
+    public ResponseEntity<SubmissionResponse> submitCode(
+            @Valid @RequestBody SubmitCodeRequest request,
+            Authentication authentication
+            ){
+
+        String studentId = authentication.getName();
+        SubmissionResponse submissionResponse = submissionService.submitCode(request, studentId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(submissionResponse);
+    }
+
+}
