@@ -1,6 +1,7 @@
 package com.project.judge.controller;
 
 import com.project.judge.dto.request.SubmitCodeRequest;
+import com.project.judge.dto.response.SubmissionDetailResponse;
 import com.project.judge.dto.response.SubmissionResponse;
 import com.project.judge.service.SubmissionService;
 import jakarta.validation.Valid;
@@ -28,4 +29,13 @@ public class SubmissionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(submissionResponse);
     }
 
+    @GetMapping("/{submissionId}")
+    public ResponseEntity<SubmissionDetailResponse> getSubmissionDetails(
+            @PathVariable Long submissionId,
+            Authentication authentication){
+
+        String userId = authentication.getName();
+        var response = submissionService.getSubmissionDetails(submissionId, userId);
+        return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
 }
