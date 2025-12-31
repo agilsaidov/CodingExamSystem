@@ -1,6 +1,6 @@
 package com.project.judge.auth.controller;
 
-import com.project.judge.auth.dto.reqeust.RegistrationRequest;
+import com.project.judge.auth.dto.request.RegistrationRequest;
 import com.project.judge.auth.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

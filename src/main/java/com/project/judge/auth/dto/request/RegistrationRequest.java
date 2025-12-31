@@ -1,4 +1,4 @@
-package com.project.judge.auth.dto.reqeust;
+package com.project.judge.auth.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.project.judge.model.Role;

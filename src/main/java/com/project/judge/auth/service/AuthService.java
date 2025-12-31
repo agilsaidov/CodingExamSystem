@@ -1,7 +1,7 @@
 package com.project.judge.auth.service;
 
-import com.project.judge.auth.dto.reqeust.LoginRequest;
-import com.project.judge.auth.dto.reqeust.RegistrationRequest;
+import com.project.judge.auth.dto.request.LoginRequest;
+import com.project.judge.auth.dto.request.RegistrationRequest;
 import com.project.judge.auth.dto.response.AuthResponse;
 import com.project.judge.auth.dto.response.GroupListResponse;
 import com.project.judge.exception.AuthException;

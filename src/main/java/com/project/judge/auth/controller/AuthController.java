@@ -1,16 +1,12 @@
 package com.project.judge.auth.controller;
 
-import com.project.judge.auth.dto.reqeust.LoginRequest;
+import com.project.judge.auth.dto.request.LoginRequest;
 import com.project.judge.auth.dto.response.AuthResponse;
 import com.project.judge.auth.service.AuthService;
-import com.project.judge.model.AppUser;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController

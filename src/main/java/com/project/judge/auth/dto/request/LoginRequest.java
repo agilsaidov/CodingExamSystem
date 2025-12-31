@@ -1,4 +1,4 @@
-package com.project.judge.auth.dto.reqeust;
+package com.project.judge.auth.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
