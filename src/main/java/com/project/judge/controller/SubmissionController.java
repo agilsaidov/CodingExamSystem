@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/submissions")
 @RequiredArgsConstructor
@@ -36,6 +38,16 @@ public class SubmissionController {
 
         String userId = authentication.getName();
         var response = submissionService.getSubmissionDetails(submissionId, userId);
+        return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
+
+    @GetMapping("/problem/{problemId}")
+    public ResponseEntity<List<SubmissionResponse>> getProblemSubmissions(
+            @PathVariable Long problemId,
+            Authentication authentication){
+
+        String userId = authentication.getName();
+        var response = submissionService.getProblemSubmissions(problemId, userId);
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 }
