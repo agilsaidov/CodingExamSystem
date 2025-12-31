@@ -23,8 +23,7 @@ public class SubmissionController {
     @PostMapping("/submit")
     public ResponseEntity<SubmissionResponse> submitCode(
             @Valid @RequestBody SubmitCodeRequest request,
-            Authentication authentication
-            ){
+            Authentication authentication){
 
         String studentId = authentication.getName();
         SubmissionResponse submissionResponse = submissionService.submitCode(request, studentId);
@@ -49,5 +48,15 @@ public class SubmissionController {
         String userId = authentication.getName();
         var response = submissionService.getProblemSubmissions(problemId, userId);
         return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
+
+    @PostMapping("/exam/{examId}/finish")
+    public ResponseEntity<Void> finishExam(
+            @PathVariable String examId,
+            Authentication authentication){
+
+        String studentId = authentication.getName();
+        submissionService.finishExam(examId, studentId);
+        return ResponseEntity.status(HttpStatus.OK).build();
     }
 }
