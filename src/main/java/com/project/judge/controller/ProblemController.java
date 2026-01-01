@@ -38,4 +38,13 @@ public class ProblemController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    @DeleteMapping("/delete/{problemId}")
+    public ResponseEntity<Void> deleteProblem(
+            @PathVariable Long problemId,
+            Authentication authentication){
+
+        problemService.deleteProblem(problemId, authentication.getName());
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
 }
