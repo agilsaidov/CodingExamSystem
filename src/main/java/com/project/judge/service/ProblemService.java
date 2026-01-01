@@ -88,6 +88,25 @@ public class ProblemService {
     }
 
 
+    @Transactional
+    public void deleteProblem(Long problemId, String instructorId) {
+        log.info("Deleting problem: {}", problemId);
+
+        Problem problem = problemRepo.findById(problemId)
+                .orElseThrow(() -> new NotFoundException("PROBLEM_NOT_FOUND", "Problem not found"));
+
+        if (!problem.getExam().getInstructor().getUserId().equals(instructorId)) {
+            throw new UnauthorizedException("You can only delete your own problems");
+        }
+
+        if (problem.getExam().getIsActive()) {
+            throw new BadRequestException("Cannot delete problems from an active exam");
+        }
+
+        problemRepo.delete(problem);
+        log.info("Problem deleted: {}", problemId);
+    }
+
 
 
 
