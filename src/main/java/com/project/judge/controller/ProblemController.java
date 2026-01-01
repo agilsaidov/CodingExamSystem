@@ -12,6 +12,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/problems")
 @RequiredArgsConstructor
@@ -28,7 +30,7 @@ public class ProblemController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PostMapping("/{problemId/test-cases}")
+    @PostMapping("/{problemId}/test-case")
     public ResponseEntity<Void> addTestCase(
             @PathVariable Long problemId,
             @Valid @RequestBody CreateTestCaseRequest request,
@@ -45,6 +47,14 @@ public class ProblemController {
 
         problemService.deleteProblem(problemId, authentication.getName());
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    @GetMapping("/exam/{examId}")
+    public ResponseEntity<List<ProblemResponse>> getExamProblems(
+            @PathVariable String examId) {
+
+        List<ProblemResponse> problems = problemService.getProblems(examId);
+        return ResponseEntity.ok(problems);
     }
 
 }
