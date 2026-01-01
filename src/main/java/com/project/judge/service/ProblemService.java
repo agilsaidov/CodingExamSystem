@@ -17,6 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -108,7 +110,13 @@ public class ProblemService {
     }
 
 
-
+    @Transactional
+    public List<ProblemResponse> getProblems(String  examId) {
+        List<Problem> problems = problemRepo.findByExamExamIdOrderByOrderIndexAsc(examId);
+        return problems.stream()
+                .map(problem -> mapToProblemResponse(problem))
+                .toList();
+    }
 
 
     //Helper methods
