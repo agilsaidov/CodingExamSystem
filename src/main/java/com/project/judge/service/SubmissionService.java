@@ -12,13 +12,16 @@ import com.project.judge.model.*;
 import com.project.judge.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -157,9 +160,9 @@ public class SubmissionService {
     }
 
 
-    //Helper methods
-    private void processSubmissionAsync(Submission submission, Problem problem) {
-        // In production, this will be async using @Async or message queue
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CompletableFuture<Void> processSubmissionAsync(Submission submission, Problem problem) {
         try {
             log.info("Running submission {} against {} test cases",
                     submission.getSubmissionId(), problem.getTestCases().size());
@@ -226,6 +229,8 @@ public class SubmissionService {
             submission.setJudgedAt(LocalDateTime.now());
             submissionRepo.save(submission);
         }
+
+        return CompletableFuture.completedFuture(null);
     }
 
     private void updateExamResult(Submission submission) {

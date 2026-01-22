@@ -5,6 +5,7 @@ import com.project.judge.dto.response.JudgeSubmissionResponse;
 import com.project.judge.service.JudgeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -19,6 +20,7 @@ public class JudgeController {
     private final JudgeService judgeService;
 
     @GetMapping("/health")
+    @PreAuthorize("hasAnyRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> health() {
         Map<String, Object> response = new HashMap<>();
         boolean available = judgeService.isAvailable();
